@@ -21,6 +21,11 @@ echo $(get_hash ./pre-release/fastbuilder-windows.exe) > ./pre-release/fastbuild
 echo $(get_hash ./pre-release/fastbuilder-macos) > ./pre-release/fastbuilder-macos.hash
 echo $(get_hash ./pre-release/fastbuilder-android) > ./pre-release/fastbuilder-android.hash
 
+go run omega_release/compressor/main.go -in ./pre-release/fastbuilder-linux -out ./pre-release/fastbuilder-linux.brotli
+go run omega_release/compressor/main.go -in ./pre-release/fastbuilder-windows.exe  -out ./pre-release/fastbuilder-windows.exe.brotli
+go run omega_release/compressor/main.go -in ./pre-release/fastbuilder-macos  -out ./pre-release/fastbuilder-macos.brotli
+go run omega_release/compressor/main.go -in ./pre-release/fastbuilder-android  -out ./pre-release/fastbuilder-android.brotli
+
 cp omega_release/更新日志.txt ./pre-release
 cp -r omega_release/新可用项 ./pre-release
 cp omega_release/install.sh ./pre-release

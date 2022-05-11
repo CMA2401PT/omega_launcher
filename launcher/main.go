@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"omega_launcher/embed_binary"
 	"omega_launcher/utils"
@@ -15,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/gorilla/websocket"
 	"github.com/pterm/pterm"
 )
@@ -24,6 +28,7 @@ var STOARGE_REPO = "http://124.222.6.29:6000"
 type BotConfig struct {
 	Code   string `json:"租赁服号"`
 	Passwd string `json:"租赁服密码"`
+	Token  string `json:"FBToken"`
 }
 
 func main() {
@@ -130,11 +135,71 @@ func RunCQHttp() {
 	pterm.Success.Println("CQ-Http已经成功启动了！")
 }
 
+func LoadCurrentFBToken() string {
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	fbconfigdir := filepath.Join(homedir, ".config/fastbuilder")
+	token := filepath.Join(fbconfigdir, "fbtoken")
+	if utils.IsFile(token) {
+		if data, err := utils.GetFileData(token); err == nil {
+			return string(data)
+		}
+	}
+	return ""
+}
+
+func RequestToken() string {
+	currentFbToken := LoadCurrentFBToken()
+	if currentFbToken != "" && strings.HasPrefix(currentFbToken, "w9/BeLNV/9") {
+		pterm.Info.Printf("要使用现有的FB账户登录吗?  使用现有账户请输入 y ,使用新账户请输入 n: ")
+		accept := utils.GetInputYN()
+		if accept {
+			return currentFbToken
+		}
+	}
+	pterm.Info.Printf("请输入FB账号/或者输入 Token: ")
+	Code := utils.GetValidInput()
+	if strings.HasPrefix(Code, "w9/BeLNV/9") {
+		pterm.Success.Printf("您输入的是 Token, 因此无需输入密码了")
+		time.Sleep(time.Second)
+		return Code
+	}
+	pterm.Info.Printf("请输入FB密码: ")
+	Passwd := utils.GetValidInput()
+	tokenstruct := &map[string]interface{}{
+		"encrypt_token": true,
+		"username":      Code,
+		"password":      Passwd,
+	}
+	if token, err := json.Marshal(tokenstruct); err != nil {
+		panic(err)
+	} else {
+		return string(token)
+	}
+}
+
+func FBTokenSetup(cfg *BotConfig) {
+	if cfg.Token != "" {
+		pterm.Info.Printf("要使用上次的 FB 账号登录吗? 要请输入 y ,需要修改请输入 n: ")
+		accept := utils.GetInputYN()
+		if accept {
+			return
+		}
+	}
+	newToken := RequestToken()
+	cfg.Token = newToken
+}
+
 func StartOmegaHelper() {
 	pterm.Success.Println("开始配置Omega登录")
 	botConfig := &BotConfig{}
 	reconfigFlag := true
+	fbTokenSetted := false
 	if err := utils.GetJsonData(path.Join(GetCurrentDir(), "服务器登录配置.json"), botConfig); err == nil && botConfig.Code != "" {
+		FBTokenSetup(botConfig)
+		fbTokenSetted = true
 		pwd := " 密码为空"
 		if botConfig.Passwd != "" {
 			pwd = " 密码为: " + botConfig.Passwd
@@ -145,6 +210,9 @@ func StartOmegaHelper() {
 		if accept {
 			reconfigFlag = false
 		}
+	}
+	if !fbTokenSetted {
+		FBTokenSetup(botConfig)
 	}
 	if reconfigFlag {
 		pterm.Info.Printf("请输入租赁服账号: ")
@@ -159,7 +227,8 @@ func StartOmegaHelper() {
 }
 
 func RunOmega(cfg *BotConfig) {
-	args := []string{"-M", "-O", "--no-update-check", "-c", cfg.Code}
+	fmt.Println(cfg.Token)
+	args := []string{"-M", "-O", "--plain-token", cfg.Token, "--no-update-check", "-c", cfg.Code}
 	if cfg.Passwd != "" {
 		args = append(args, "-p")
 		args = append(args, cfg.Passwd)
@@ -312,15 +381,20 @@ func DownloadOmega() {
 	url := ""
 	switch GetPlantform() {
 	case embed_binary.WINDOWS_x86_64:
-		url = STOARGE_REPO + "/fastbuilder-windows.exe"
+		url = STOARGE_REPO + "/fastbuilder-windows.exe.brotli"
 	case embed_binary.Linux_x86_64:
-		url = STOARGE_REPO + "/fastbuilder-linux"
+		url = STOARGE_REPO + "/fastbuilder-linux.brotli"
 	case embed_binary.MACOS_x86_64:
-		url = STOARGE_REPO + "/fastbuilder-macos"
+		url = STOARGE_REPO + "/fastbuilder-macos.brotli"
 	default:
 		panic("未知平台" + GetPlantform())
 	}
-	execBytes := utils.DownloadSmallContent(url)
+	compressedData := utils.DownloadSmallContent(url)
+	var execBytes []byte
+	var err error
+	if execBytes, err = ioutil.ReadAll(brotli.NewReader(bytes.NewReader(compressedData))); err != nil {
+		panic(err)
+	}
 	if err := utils.WriteFileData(exec, execBytes); err != nil {
 		panic(err)
 	}

@@ -3,6 +3,7 @@ module omega_launcher
 go 1.18
 
 require (
+	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/atomicgo/cursor v0.0.1 // indirect
 	github.com/cheggaaa/pb v1.0.29 // indirect
 	github.com/gookit/color v1.5.0 // indirect
